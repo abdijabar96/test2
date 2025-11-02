@@ -1,12 +1,36 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type } from "@google/genai";
+
+// Fix: Define the AIStudio interface to resolve type conflicts with other global declarations.
+interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+}
+
+// Declare a global interface for window.aistudio to provide type safety.
+declare global {
+    interface Window {
+        aistudio?: AIStudio;
+    }
+}
 
 const App = () => {
     const [topic, setTopic] = useState('');
     const [titles, setTitles] = useState<string[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [apiKeySelected, setApiKeySelected] = useState(false);
+
+    useEffect(() => {
+        const checkApiKey = async () => {
+            if (window.aistudio) {
+                const hasKey = await window.aistudio.hasSelectedApiKey();
+                setApiKeySelected(hasKey);
+            }
+        };
+        checkApiKey();
+    }, []);
 
     const generateTitles = async () => {
         if (!topic.trim()) {
@@ -49,11 +73,35 @@ const App = () => {
         } catch (err) {
             console.error(err);
             const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
-            setError(`Failed to generate titles. ${errorMessage}`);
+            if (errorMessage.includes('API Key must be set') || errorMessage.includes('Requested entity was not found')) {
+                setError('Your API key appears to be invalid. Please select a valid key.');
+                setApiKeySelected(false);
+            } else {
+                setError(`Failed to generate titles. ${errorMessage}`);
+            }
         } finally {
             setIsLoading(false);
         }
     };
+
+    const handleSelectKey = async () => {
+        if (window.aistudio) {
+            await window.aistudio.openSelectKey();
+            setApiKeySelected(true);
+            setError(null);
+        }
+    };
+
+    if (!apiKeySelected) {
+        return (
+            <div className="container">
+                <h1>&#128273; API Key Required</h1>
+                <p>To use the YouTube Title Generator, please select your Gemini API key. <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer">Learn about billing.</a></p>
+                <button onClick={handleSelectKey}>Select API Key</button>
+                {error && <p className="error" role="alert">{error}</p>}
+            </div>
+        );
+    }
 
     return (
         <div className="container">
